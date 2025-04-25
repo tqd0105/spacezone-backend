@@ -84,7 +84,7 @@ app.use((req, res) => {
   res.status(404).json({ error: "Không tìm thấy route" });
 });
 
-app.get('/', (req, res) => {
+app.get('/api', (req, res) => {
   res.send('Backend SpaceZone đang hoạt động 🚀');
 });
 
