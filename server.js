@@ -84,6 +84,10 @@ app.use((req, res) => {
   res.status(404).json({ error: "Không tìm thấy route" });
 });
 
+app.get('/', (req, res) => {
+  res.send('Backend SpaceZone đang hoạt động 🚀');
+});
+
 // 📌 Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
@@ -95,6 +99,4 @@ app.listen(PORT, () => {
 
 
 
-app.get('/', (req, res) => {
-  res.send('Backend SpaceZone đang hoạt động 🚀');
-});
+
