@@ -79,14 +79,16 @@ app.use((err, req, res, next) => {
   });
 });
 
+app.get('/api', (req, res) => {
+  res.send('Backend SpaceZone đang hoạt động 🚀');
+});
+
 // 📌 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: "Không tìm thấy route" });
 });
 
-app.get('/api', (req, res) => {
-  res.send('Backend SpaceZone đang hoạt động 🚀');
-});
+
 
 // 📌 Start server
 const PORT = process.env.PORT || 5000;
