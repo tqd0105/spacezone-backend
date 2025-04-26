@@ -56,6 +56,7 @@ router.post("/", authMiddleware, upload.single("image"), async (req, res) => {
     });
 
     await newPost.save();
+    newPost = await newPost.populate('author')
     res.status(201).json(newPost);
   } catch (error) {
     console.error("❌ Lỗi tạo bài viết:", error);
