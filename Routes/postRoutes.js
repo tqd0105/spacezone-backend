@@ -56,8 +56,10 @@ router.post("/", authMiddleware, upload.single("image"), async (req, res) => {
     });
 
     await newPost.save();
-    newPost = await newPost.populate('author')
-    res.status(201).json(newPost);
+    
+    // Populate user information before sending response
+    const populatedPost = await Post.findById(newPost._id).populate("author", "name username avatar");
+    res.status(201).json(populatedPost);
   } catch (error) {
     console.error("❌ Lỗi tạo bài viết:", error);
     res.status(500).json({ error: "❌ Lỗi server" });
