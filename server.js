@@ -30,9 +30,6 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); 
 
-// 📌 Serve static files (Uploads)
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
 // 📌 Kết nối MongoDB
 const MONGO_URI = process.env.MONGO_URI;
 if (!MONGO_URI) {
