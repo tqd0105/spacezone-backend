@@ -9,8 +9,16 @@ const UserSchema = new mongoose.Schema(
     password: { type: String, required: true },
     avatar: { type: String, default: "/uploads/avatar/default.png" },
     coverImage: { type: String, default: "/uploads/cover/default_cover.png" },
+    loginHistory: [
+      {
+        ip: String,
+        userAgent: String,
+        time: Date
+      }
+    ]
   },
   { timestamps: true }
 );
+
 
 module.exports = mongoose.model("User", UserSchema);

@@ -14,7 +14,6 @@ router.get("/register", (req, res) => {
   res.send("✅ API /auth/register đang hoạt động (chỉ hỗ trợ POST)");
 });
 
-
 // 📌 Đăng ký
 router.post("/register", async (req, res) => {
   try {
@@ -53,10 +52,7 @@ router.post("/register", async (req, res) => {
   }
 });
 
-
-
-
-// 📌 Đăng nhập
+// Login
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -78,7 +74,7 @@ router.post("/login", async (req, res) => {
     const token = jwt.sign(
       { id: user._id },
       process.env.JWT_SECRET || "your_jwt_secret",
-      { expiresIn: "1d" }
+      { expiresIn: "12h" }
     );
 
     res.json({
@@ -91,6 +87,13 @@ router.post("/login", async (req, res) => {
         avatar: user.avatar
       }
     });
+
+    user.loginHistory.push({
+      id: req.body.ip || req.ip,
+      userAgent: req.body.userAgent || req.headers['user-agent'],
+      time: new Date()
+    });
+    await user.save();
   } catch (error) {
     console.error("❌ Lỗi đăng nhập:", error);
     res.status(500).json({ error: "Lỗi server" });
@@ -110,5 +113,7 @@ router.get("/me", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Lỗi server" });
   }
 });
+
+
 
 module.exports = router;
