@@ -29,6 +29,7 @@ app.use(cors({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); 
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // 📌 Kết nối MongoDB
 const MONGO_URI = process.env.MONGO_URI;
@@ -65,7 +66,7 @@ app.use("/api/comments", commentRoutes);
 app.use("/api/likes", likeRoutes);
 app.use("/api/shares", shareRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/uploads", express.static(path.join(__dirname, "uploads")));
+// app.use("/api/uploads", express.static(path.join(__dirname, "uploads")));
 
 // 📌 Error handling middleware
 app.use((err, req, res, next) => {
