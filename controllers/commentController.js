@@ -2,19 +2,21 @@ const Comment = require("../models/Comment");
 
 // 📌 API lấy tất cả bình luận của một bài post (bao gồm phản hồi)
 const getCommentsByPostId = async (req, res) => {
-  const { postId } = req.query; // Lấy postId từ query string
-  console.log("postId:", postId); // Kiểm tra postId
-
-  if (!postId) {
-    return res.status(400).json({ message: "postId là bắt buộc" });
-  }
-
   try {
-    const comments = await Comment.find({ postId }); // Tìm tất cả bình luận có postId này
-    res.json(comments);
+    const { postId } = req.params;
+
+    const comments = await Comment.find({ postId, parentId: null })
+      .populate({
+        path: "replies",
+        populate: { path: "replies" }, // Lấy phản hồi của phản hồi
+      })
+      .sort({ createdAt: -1 })
+      .exec();
+
+    res.status(200).json(comments);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Lỗi khi lấy bình luận" });
+    console.error("Lỗi khi lấy bình luận:", error);
+    res.status(500).json({ message: "Lỗi server" });
   }
 };
 
