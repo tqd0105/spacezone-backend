@@ -3,7 +3,7 @@ const Comment = require("../models/Comment");
 // 📌 API lấy tất cả bình luận của một bài post (bao gồm phản hồi)
 const getCommentsByPostId = async (req, res) => {
   try {
-    const { postId } = req.params;
+    const { postId } = req.query;
 
     const comments = await Comment.find({ postId, parentId: null })
       .populate({
