@@ -4,7 +4,7 @@ const { getCommentsByPostId, addComment, getComment, deleteComment } = require("
 
 router.get("/", getCommentsByPostId); // Lấy bình luận
 router.post("/", addComment); // Thêm bình luận
-router.get("/commentId", getComment)
+router.get("/:commentId", getComment)
 router.delete("/:commentId", deleteComment)
 
 module.exports = router;
