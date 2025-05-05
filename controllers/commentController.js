@@ -5,18 +5,19 @@ const getCommentsByPostId = async (req, res) => {
   try {
     const { postId } = req.query;
 
+    console.log("Đang tìm comment theo postId:", postId);
+
     const comments = await Comment.find({ postId, parentId: null })
       .populate({
         path: "replies",
-        populate: { path: "replies" }, // Lấy phản hồi của phản hồi
+        populate: { path: "replies" },
       })
-      .sort({ createdAt: -1 })
-      .exec();
+      .sort({ createdAt: -1 });
 
     res.status(200).json(comments);
   } catch (error) {
-    console.error("Lỗi khi lấy bình luận:", error);
-    res.status(500).json({ message: "Lỗi server" });
+    console.error("Lỗi khi lấy bình luận:", error.message);
+    res.status(500).json({ message: "Lỗi server", error: error.message });
   }
 };
 
