@@ -23,14 +23,25 @@ const getCommentsByPostId = async (req, res) => {
 // 📌 API lấy toàn bộ bình luận (bao gồm thông tin bài post)
 const getComment = async (req, res) => {
   try {
-    const comments = await Comment.find().populate("postId");
+    const { postId } = req.query;
+    let comments;
+    if (postId) {
+      comments = await Comment.find({ postId, parentId: null })
+        .populate({
+          path: "replies",
+          populate: { path: "replies" },
+        })
+        .sort({ createdAt: -1 })
+        .exec();
+    } else {
+      comments = await Comment.find().populate("postId");
+    }
     res.json(comments);
   } catch (error) {
     res.status(500).json({ error: "Lỗi server khi lấy bình luận" });
     console.log(error);
   }
 };
-
 // 📌 API thêm bình luận hoặc phản hồi
 const addComment = async (req, res) => {
   try {
