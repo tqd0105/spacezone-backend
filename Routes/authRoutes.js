@@ -40,12 +40,26 @@ router.post("/register", async (req, res) => {
       username: email.split("@")[0]
     });
 
-    await newUser.save();
-
+    const token = jwt.sign(
+      { id: newUser._id },
+      process.env.JWT_SECRET || "your_jwt_secret",
+      { expiresIn: "12h" }
+    );
+    
     res.status(201).json({
       message: "Đăng ký thành công!",
-      user: { id: newUser._id, name: newUser.name, email: newUser.email }
-    });
+      token,
+      user: {
+        id: newUser._id,
+        name: newUser.name,
+        email: newUser.email,
+        username: newUser.username,
+        avatar: newUser.avatar || null
+      }
+    });    
+
+    await newUser.save();
+
   } catch (error) {
     console.error("❌ Lỗi đăng ký:", error);
     res.status(500).json({ error: "Lỗi server" });
@@ -78,6 +92,7 @@ router.post("/login", async (req, res) => {
     );
 
     res.json({
+      message: "Đăng nhập thành công!",
       token,
       user: {
         id: user._id,
