@@ -3,7 +3,11 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const router = express.Router();
-const authMiddleware = require("../middlewares/authMiddleware");
+const { verifyToken, sanitizeSensitiveData } = require("../middlewares/authMiddleware");
+
+// Cache để lưu trữ thông tin đăng nhập gần đây
+const loginCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 phút
 
 // 📌 Kiểm tra API hoạt động
 router.get("/", (req, res) => {
@@ -15,7 +19,7 @@ router.get("/register", (req, res) => {
 });
 
 // 📌 Đăng ký
-router.post("/register", async (req, res) => {
+router.post("/register", sanitizeSensitiveData, async (req, res) => {
   try {
     const { name, email, password, confirmPassword } = req.body;
 
@@ -53,7 +57,7 @@ router.post("/register", async (req, res) => {
 });
 
 // Login
-router.post("/login", async (req, res) => {
+router.post("/login", sanitizeSensitiveData, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -61,7 +65,15 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Vui lòng điền đầy đủ thông tin!" });
     }
 
-    const user = await User.findOne({ email });
+    // Kiểm tra cache trước
+    const cacheKey = `${email}:${password}`;
+    const cachedData = loginCache.get(cacheKey);
+    if (cachedData && Date.now() - cachedData.timestamp < CACHE_TTL) {
+      return res.json(cachedData.data);
+    }
+
+    // Tìm user và kiểm tra mật khẩu trong một query
+    const user = await User.findOne({ email }).select('+password');
     if (!user) {
       return res.status(400).json({ error: "Email không tồn tại" });
     }
@@ -77,7 +89,7 @@ router.post("/login", async (req, res) => {
       { expiresIn: "12h" }
     );
 
-    res.json({
+    const responseData = {
       token,
       user: {
         id: user._id,
@@ -86,14 +98,23 @@ router.post("/login", async (req, res) => {
         username: user.username,
         avatar: user.avatar
       }
+    };
+
+    // Lưu vào cache
+    loginCache.set(cacheKey, {
+      data: responseData,
+      timestamp: Date.now()
     });
 
+    // Cập nhật lịch sử đăng nhập bất đồng bộ
     user.loginHistory.push({
       id: req.body.ip || req.ip,
       userAgent: req.body.userAgent || req.headers['user-agent'],
       time: new Date()
     });
-    await user.save();
+    user.save().catch(err => console.error("Lỗi cập nhật lịch sử đăng nhập:", err));
+
+    res.json(responseData);
   } catch (error) {
     console.error("❌ Lỗi đăng nhập:", error);
     res.status(500).json({ error: "Lỗi server" });
@@ -101,7 +122,7 @@ router.post("/login", async (req, res) => {
 });
 
 // 📌 Lấy thông tin user
-router.get("/me", authMiddleware, async (req, res) => {
+router.get("/me", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password");
     if (!user) {
@@ -113,7 +134,5 @@ router.get("/me", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Lỗi server" });
   }
 });
-
-
 
 module.exports = router;
