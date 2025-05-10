@@ -181,6 +181,7 @@ router.delete("/:id/:type", async (req, res)=> {
 })
 
 // Delete User
+// Delete User
 router.delete("/:id", async (req, res) => {
   try {
     const userId = req.params.id;
@@ -193,15 +194,21 @@ router.delete("/:id", async (req, res) => {
       return res.status(400).json({ error: "ID khong dung dinh dang" });
     }
 
+    // Xóa tất cả bài viết của user
+    await Post.deleteMany({ userId: userId });
+    
+    // Xóa tất cả comment của user
+    await Comment.deleteMany({ userId: userId });
+
+    // Xóa user
     const user = await User.findByIdAndDelete(userId);
     if (!user)
       return res.status(404).json({ error: "Nguoi dung khong ton tai" });
 
     res.json({ message: "Da xoa nguoi dung thanh cong" });
-  } catch {
+  } catch (error) {
     console.error("Loi xoa nguoi dung: ", error);
     res.status(500).json({ error: "Loi server" });
   }
 });
-
 module.exports = router;
