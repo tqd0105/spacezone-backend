@@ -10,6 +10,10 @@ const verifyToken = require("../middlewares/authMiddleware");
 const { error } = require("console");
 const uploadsAvatarDir = path.join(__dirname, "../uploads/avatar");
 const uploadsCoverDir = path.join(__dirname, "../uploads/cover");
+const Post = require("../models/Post");
+const Comment = require("../models/Comment");
+const Like = require("../models/Like");
+const Share = require("../models/Share");
 
 if (!fs.existsSync(uploadsAvatarDir)) {
   fs.mkdirSync(uploadsAvatarDir, { recursive: true });
@@ -193,12 +197,26 @@ router.delete("/:id", async (req, res) => {
       return res.status(400).json({ error: "ID khong dung dinh dang" });
     }
 
-    const user = await User.findByIdAndDelete(userId);
-    if (!user)
-      return res.status(404).json({ error: "Nguoi dung khong ton tai" });
+    // Delete all related data first
+    await Promise.all([
+      // Delete user's posts
+      Post.deleteMany({ author: userId }),
+      // Delete user's comments
+      Comment.deleteMany({ userId: userId }),
+      // Delete user's likes
+      Like.deleteMany({ userId: userId }),
+      // Delete user's shares
+      Share.deleteMany({ userId: userId })
+    ]);
 
-    res.json({ message: "Da xoa nguoi dung thanh cong" });
-  } catch {
+    // Finally delete the user
+    const user = await User.findByIdAndDelete(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Nguoi dung khong ton tai" });
+    }
+
+    res.json({ message: "Da xoa nguoi dung va tat ca du lieu lien quan thanh cong" });
+  } catch (error) {
     console.error("Loi xoa nguoi dung: ", error);
     res.status(500).json({ error: "Loi server" });
   }
