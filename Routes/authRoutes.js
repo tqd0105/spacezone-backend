@@ -102,13 +102,6 @@ router.post("/login", async (req, res) => {
         avatar: user.avatar
       }
     });
-
-    user.loginHistory.push({
-      id: req.body.ip || req.ip,
-      userAgent: req.body.userAgent || req.headers['user-agent'],
-      time: new Date()
-    });
-    await user.save();
   } catch (error) {
     console.error("❌ Lỗi đăng nhập:", error);
     res.status(500).json({ error: "Lỗi server" });
