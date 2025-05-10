@@ -181,7 +181,6 @@ router.delete("/:id/:type", async (req, res)=> {
 })
 
 // Delete User
-// Delete User
 router.delete("/:id", async (req, res) => {
   try {
     const userId = req.params.id;
@@ -195,10 +194,10 @@ router.delete("/:id", async (req, res) => {
     }
 
     // Xóa tất cả bài viết của user
-    await Post.deleteMany({ userId: userId });
+    await Post.deleteMany({ author: userId });
     
     // Xóa tất cả comment của user
-    await Comment.deleteMany({ userId: userId });
+    await Comment.deleteMany({ author: userId });
 
     // Xóa user
     const user = await User.findByIdAndDelete(userId);
@@ -211,4 +210,5 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ error: "Loi server" });
   }
 });
+
 module.exports = router;
