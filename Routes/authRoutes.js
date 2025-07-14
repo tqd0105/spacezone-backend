@@ -70,26 +70,38 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
+    const start = Date.now();
 
     if (!email || !password) {
       return res.status(400).json({ error: "Vui lòng điền đầy đủ thông tin!" });
     }
 
+    const t1 = Date.now();
     const user = await User.findOne({ email });
+    const t2 = Date.now();
+    console.log("⏱️ Tìm user mất:", t2 - t1, "ms");
+
     if (!user) {
       return res.status(400).json({ error: "Email không tồn tại" });
     }
 
+    const t3 = Date.now();
     const isMatch = await bcrypt.compare(password, user.password);
+    const t4 = Date.now();
+    console.log("⏱️ So sánh mật khẩu mất:", t4 - t3, "ms");
+
     if (!isMatch) {
       return res.status(400).json({ error: "Sai mật khẩu" });
     }
 
+    const t5 = Date.now();
     const token = jwt.sign(
       { id: user._id },
       process.env.JWT_SECRET || "your_jwt_secret",
       { expiresIn: "12h" }
     );
+    const t6 = Date.now();
+    console.log("⏱️ Tạo token mất:", t6 - t5, "ms");
 
     res.json({
       message: "Đăng nhập thành công!",
@@ -102,6 +114,9 @@ router.post("/login", async (req, res) => {
         avatar: user.avatar
       }
     });
+
+    const end = Date.now();
+    console.log("⏱️ Tổng thời gian đăng nhập:", end - start, "ms");
   } catch (error) {
     console.error("❌ Lỗi đăng nhập:", error);
     res.status(500).json({ error: "Lỗi server" });
