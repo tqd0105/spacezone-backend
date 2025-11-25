@@ -1,7 +1,5 @@
 const express = require("express");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+const authController = require("../controllers/authController");
 const router = express.Router();
 const authMiddleware = require("../middlewares/authMiddleware");
 
@@ -14,129 +12,13 @@ router.get("/register", (req, res) => {
   res.send("✅ API /auth/register đang hoạt động (chỉ hỗ trợ POST)");
 });
 
-// 📌 Đăng ký
-router.post("/register", async (req, res) => {
-  try {
-    const { name, email, password, confirmPassword } = req.body;
+// 📌 Sử dụng AuthController
+router.post("/register", authController.registerUser);
+router.post("/login", authController.loginUser);
+router.get("/me", authMiddleware, authController.getUserProfile);
 
-    if (!name || !email || !password || !confirmPassword) {
-      return res.status(400).json({ error: "Vui lòng điền đầy đủ thông tin!" });
-    }
-
-    if (password !== confirmPassword) {
-      return res.status(400).json({ error: "Mật khẩu xác nhận không khớp!" });
-    }
-
-    const userExists = await User.findOne({ email });
-    if (userExists) {
-      return res.status(400).json({ error: "Email đã được sử dụng!" });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({
-      name,
-      email,
-      password: hashedPassword,
-      username: email.split("@")[0]
-    });
-
-    const token = jwt.sign(
-      { id: newUser._id },
-      process.env.JWT_SECRET || "your_jwt_secret",
-      { expiresIn: "12h" }
-    );
-    
-    res.status(201).json({
-      message: "Đăng ký thành công!",
-      token,
-      user: {
-        id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-        username: newUser.username,
-        avatar: newUser.avatar || null
-      }
-    });    
-
-    await newUser.save();
-
-  } catch (error) {
-    console.error("❌ Lỗi đăng ký:", error);
-    res.status(500).json({ error: "Lỗi server" });
-  }
-});
-
-// Login
-router.post("/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const start = Date.now();
-
-    if (!email || !password) {
-      return res.status(400).json({ error: "Vui lòng điền đầy đủ thông tin!" });
-    }
-
-    const t1 = Date.now();
-    const user = await User.findOne({ email });
-    const t2 = Date.now();
-    console.log("⏱️ Tìm user mất:", t2 - t1, "ms");
-
-    if (!user) {
-      return res.status(400).json({ error: "Email không tồn tại" });
-    }
-
-    const t3 = Date.now();
-    const isMatch = await bcrypt.compare(password, user.password);
-    const t4 = Date.now();
-    console.log("⏱️ So sánh mật khẩu mất:", t4 - t3, "ms");
-
-    if (!isMatch) {
-      return res.status(400).json({ error: "Sai mật khẩu" });
-    }
-
-    const t5 = Date.now();
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET || "your_jwt_secret",
-      { expiresIn: "12h" }
-    );
-    const t6 = Date.now();
-    console.log("⏱️ Tạo token mất:", t6 - t5, "ms");
-
-    res.json({
-      message: "Đăng nhập thành công!",
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        username: user.username,
-        avatar: user.avatar
-      }
-    });
-
-    const end = Date.now();
-    console.log("⏱️ Tổng thời gian đăng nhập:", end - start, "ms");
-  } catch (error) {
-    console.error("❌ Lỗi đăng nhập:", error);
-    res.status(500).json({ error: "Lỗi server" });
-  }
-});
-
-// 📌 Lấy thông tin user
-router.get("/me", authMiddleware, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).select("-password");
-    if (!user) {
-      return res.status(404).json({ error: "Không tìm thấy user" });
-    }
-    res.json(user);
-  } catch (error) {
-    console.error("❌ Lỗi lấy thông tin user:", error);
-    res.status(500).json({ error: "Lỗi server" });
-  }
-});
-
-
+// 📌 Thêm routes mới cho auto-logout
+router.post("/logout", authMiddleware, authController.logoutUser);
+router.post("/refresh-token", authController.refreshToken);
 
 module.exports = router;

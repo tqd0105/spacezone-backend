@@ -74,6 +74,49 @@ router.get("/", async (req, res) => {
   }
 });
 
+// 🔍 Search users for friend requests
+router.get("/search/:query", verifyToken, async (req, res) => {
+  try {
+    const { query } = req.params;
+    const currentUserId = req.user.id;
+    
+    console.log(`🔍 User search query: "${query}" by user: ${currentUserId}`);
+    
+    if (!query || query.trim().length < 2) {
+      return res.status(400).json({ 
+        success: false,
+        error: "Từ khóa tìm kiếm phải có ít nhất 2 ký tự" 
+      });
+    }
+
+    // Search users by username or fullName
+    const searchRegex = new RegExp(query.trim(), 'i');
+    const users = await User.find({
+      _id: { $ne: currentUserId }, // Exclude current user
+      $or: [
+        { username: searchRegex },
+        { fullName: searchRegex }
+      ]
+    }).select('username fullName avatar').limit(20);
+
+    console.log(`✅ Found ${users.length} users matching "${query}"`);
+
+    res.json({
+      success: true,
+      users,
+      query: query.trim(),
+      count: users.length
+    });
+    
+  } catch (error) {
+    console.error('❌ User search error:', error);
+    res.status(500).json({ 
+      success: false,
+      error: "Lỗi khi tìm kiếm người dùng" 
+    });
+  }
+});
+
 // Backend Express (userRoutes.js hoặc tương tự)
 router.get("/:username", async (req, res) => {
   try {

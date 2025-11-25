@@ -4,9 +4,11 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
-
+const http = require("http");
+const socketIo = require("socket.io");
 
 const app = express();
+const server = http.createServer(app);
 
 // 📌 Tạo thư mục uploads nếu chưa tồn tại
 const uploadsDir = path.join(__dirname, "uploads");
@@ -17,6 +19,17 @@ if (!fs.existsSync(uploadsDir)) {
 if (!fs.existsSync(uploadsPostDir)) {
   fs.mkdirSync(uploadsPostDir);
 }
+
+// 📌 Socket.IO Configuration
+const io = socketIo(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  transports: ['websocket', 'polling'],
+  allowEIO3: true
+});
 
 // 📌 Middleware
 app.use(cors({
@@ -58,6 +71,14 @@ const likeRoutes = require("./Routes/likeRoutes");
 const shareRoutes = require("./Routes/shareRoutes");
 const userRoutes = require("./Routes/userRoutes");
 const authRoutes = require("./Routes/authRoutes");
+const chatRoutes = require("./Routes/chatRoutes");
+const friendRoutes = require("./Routes/friendRoutes");
+
+// 📌 Socket.IO Chat Handlers
+require('./socket/chatSocketHandlers')(io);
+
+// Make io accessible to routes
+app.set('io', io);
 
 // 📌 API Routes
 app.use("/api/users", userRoutes);
@@ -66,6 +87,8 @@ app.use("/api/comments", commentRoutes);
 app.use("/api/likes", likeRoutes);
 app.use("/api/shares", shareRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/chat", chatRoutes);
+app.use("/api/friends", friendRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -91,11 +114,13 @@ app.use((req, res) => {
 
 // 📌 Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📌 Socket.IO enabled for real-time chat`);
   console.log(`📌 Frontend URL: ${process.env.CLIENT_URL || "http://localhost:5173"}`);
   console.log(`📌 MongoDB URI: ${MONGO_URI}`);
   console.log(`📌 API URL: http://localhost:${PORT}/api`);
+  console.log(`📌 Socket.IO URL: ws://localhost:${PORT}`);
 });
 
 

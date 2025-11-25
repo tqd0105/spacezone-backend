@@ -9,6 +9,11 @@ const UserSchema = new mongoose.Schema(
     avatar: { type: String, default: "/uploads/avatar/default.png" },
     coverImage: { type: String, default: "/uploads/cover/default_cover.png" },
     
+    // 📌 Thêm fields để theo dõi session và auto-logout
+    lastLoginTime: { type: Date, default: null },
+    tokenExpiration: { type: Date, default: null },
+    refreshToken: { type: String, default: null },
+    
   },
   { timestamps: true }
 );
