@@ -100,7 +100,6 @@ exports.createOrGetConversation = async (req, res) => {
   const { recipientId } = req.body;
   
   try {
-    console.log(`📋 [Controller.createOrGetConversation] User ${userId} creating/finding conversation with ${recipientId}`);
     
     // Validation
     if (!recipientId) {
@@ -299,7 +298,7 @@ exports.sendMessage = async (req, res) => {
   const startTime = Date.now();
   const userId = req.user.id;
   const { conversationId } = req.params;
-  const { content, type = "text" } = req.body;
+  const { content, type = "text", sharedPost } = req.body;
   
   try {
     console.log(`📋 [Controller.sendMessage] User ${userId} sending message to conversation ${conversationId}`);
@@ -316,7 +315,7 @@ exports.sendMessage = async (req, res) => {
       throw new Error("Nội dung tin nhắn không được quá 1000 ký tự");
     }
     
-    const validTypes = ["text", "image", "file"];
+    const validTypes = ["text", "image", "file", "share"];
     if (!validTypes.includes(type)) {
       throw new Error("Loại tin nhắn không hợp lệ");
     }
@@ -360,12 +359,19 @@ exports.sendMessage = async (req, res) => {
     
     try {
       await session.withTransaction(async () => {
-        message = new Message({
+        const messageData = {
           conversation: conversationId,
           sender: userId,
           content: content.trim(),
           type
-        });
+        };
+        
+        // Add sharedPost data if message type is 'share'
+        if (type === 'share' && sharedPost) {
+          messageData.sharedPost = sharedPost;
+        }
+        
+        message = new Message(messageData);
         
         await message.save({ session });
         await message.populate('sender', 'name username avatar');

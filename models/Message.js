@@ -23,10 +23,10 @@ const MessageSchema = new mongoose.Schema(
       trim: true,
       maxlength: 1000, // Limit message length
     },
-    // Message type: 'text', 'image', 'file' (for future features)
+    // Message type: 'text', 'image', 'file', 'share' for shared posts
     type: {
       type: String,
-      enum: ["text", "image", "file"],
+      enum: ["text", "image", "file", "share"],
       default: "text",
     },
     // For non-text messages (future feature)
@@ -64,6 +64,33 @@ const MessageSchema = new mongoose.Schema(
         },
       },
     ],
+    // Shared post data (for type: 'share')
+    sharedPost: {
+      id: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null
+      },
+      title: {
+        type: String,
+        default: null
+      },
+      content: {
+        type: String,
+        default: null
+      },
+      author: {
+        type: String,
+        default: null
+      },
+      url: {
+        type: String,
+        default: null
+      },
+      image: {
+        type: String,
+        default: null
+      }
+    },
     // Soft delete
     isDeleted: {
       type: Boolean,
