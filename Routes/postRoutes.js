@@ -1,6 +1,7 @@
 const express = require("express");
 const multer = require("multer");
 const Post = require("../models/Post");
+const Friend = require("../models/Friend");
 const path = require("path");
 const router = express.Router();
 const fs = require("fs");
@@ -67,12 +68,43 @@ router.post("/", authMiddleware, upload.single("image"), async (req, res) => {
 });
 
 
-// ✅ API: Lấy danh sách bài viết
-router.get("/", async (req, res) => {
+// ✅ API: Lấy danh sách bài viết (chỉ của bạn bè)
+router.get("/", authMiddleware, async (req, res) => {
   try {
-    const posts = await Post.find() 
+    const currentUserId = req.user.id;
+    
+    console.log(`📋 [Get Posts] User ${currentUserId} requesting posts...`);
+    
+    // Lấy danh sách bạn bè đã được chấp nhận
+    const friendships = await Friend.find({
+      $or: [
+        { sender: currentUserId, status: 'accepted' },
+        { receiver: currentUserId, status: 'accepted' }
+      ]
+    });
+    
+    console.log(`📋 [Get Posts] Found ${friendships.length} accepted friendships`);
+    
+    // Tạo danh sách ID của bạn bè
+    const friendIds = friendships.map(friendship => {
+      return friendship.sender.toString() === currentUserId 
+        ? friendship.receiver 
+        : friendship.sender;
+    });
+    
+    // Thêm ID của chính mình để xem bài viết của mình
+    friendIds.push(currentUserId);
+    
+    console.log(`📋 [Get Posts] User ${currentUserId} has ${friendIds.length - 1} friends, getting posts from: ${friendIds}`);
+    
+    // Lấy bài viết của bạn bè và chính mình
+    const posts = await Post.find({ 
+      author: { $in: friendIds } 
+    })
       .populate("author", "name username avatar")
       .sort({ createdAt: -1 });
+
+    console.log(`📋 [Get Posts] Found ${posts.length} posts for user ${currentUserId}`);
 
     res.json(posts);
   } catch (error) {
@@ -81,11 +113,36 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ✅ API: Lấy bài viết theo ID
-router.get("/:id", async (req, res) => {
+// ✅ API: Lấy bài viết theo ID (chỉ của bạn bè)
+router.get("/:id", authMiddleware, async (req, res) => {
   try {
+    const currentUserId = req.user.id;
     const post = await Post.findById(req.params.id).populate("author", "name username avatar");
-    if (!post) return res.status(404).json({ message: "Bài viết không tồn tại" });
+    
+    if (!post) {
+      return res.status(404).json({ message: "Bài viết không tồn tại" });
+    }
+    
+    // Nếu là bài viết của chính mình thì cho phép xem
+    if (post.author._id.toString() === currentUserId) {
+      return res.json(post);
+    }
+    
+    // Kiểm tra có phải bạn bè không
+    const friendship = await Friend.findOne({
+      $or: [
+        { sender: currentUserId, receiver: post.author._id, status: 'accepted' },
+        { sender: post.author._id, receiver: currentUserId, status: 'accepted' }
+      ]
+    });
+    
+    if (!friendship) {
+      return res.status(403).json({ 
+        message: "Bạn cần kết bạn để xem bài viết này",
+        requiresFriendship: true 
+      });
+    }
+    
     res.json(post);
   } catch (error) {
     console.error("❌ Lỗi lấy bài viết:", error);
