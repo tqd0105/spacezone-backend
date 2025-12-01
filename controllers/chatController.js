@@ -561,3 +561,83 @@ exports.getUnreadCount = async (req, res) => {
     });
   }
 };
+
+/**
+ * @desc    Xóa tất cả tin nhắn trong conversation
+ * @route   DELETE /api/chat/conversations/:conversationId/messages
+ * @access  Private
+ */
+const clearAllMessages = async (req, res) => {
+  const startTime = Date.now();
+  const { conversationId } = req.params;
+  const userId = req.user.id;
+
+  try {
+    console.log(`🗑️ [Controller.clearAllMessages] User ${userId} clearing messages in conversation ${conversationId}`);
+
+    // Validate conversation ID
+    validateObjectId(conversationId, "Conversation ID");
+
+    // Check if conversation exists and user is participant
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      throw new Error("Conversation không tồn tại");
+    }
+
+    // Check if user is participant in the conversation
+    const isParticipant = conversation.participants.some(
+      participantId => participantId.toString() === userId
+    );
+
+    if (!isParticipant) {
+      throw new Error("Bạn không có quyền truy cập conversation này");
+    }
+
+    // Check existing messages first
+    const existingMessages = await Message.find({ conversation: conversationId });
+    console.log(`🔍 [Controller.clearAllMessages] Found ${existingMessages.length} messages to delete`);
+    
+    // Delete all messages in the conversation
+    const deleteResult = await Message.deleteMany({
+      conversation: conversationId
+    });
+
+    console.log(`🗑️ [Controller.clearAllMessages] Deleted ${deleteResult.deletedCount} messages from conversation ${conversationId}`);
+
+    // Update conversation's lastMessage to null and lastActivity
+    await Conversation.findByIdAndUpdate(conversationId, {
+      lastMessage: null,
+      lastActivity: new Date()
+    });
+
+    const endTime = Date.now();
+    console.log(`✅ [Controller.clearAllMessages] Successfully cleared ${deleteResult.deletedCount} messages in ${endTime - startTime}ms`);
+
+    res.status(200).json({
+      success: true,
+      message: `Đã xóa ${deleteResult.deletedCount} tin nhắn`,
+      data: {
+        conversationId,
+        deletedCount: deleteResult.deletedCount
+      },
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    const endTime = Date.now();
+    console.error(`❌ [Controller.clearAllMessages] Error for user ${userId}:`, error.message);
+    console.error(`⏱️ [Controller.clearAllMessages] Request failed after: ${endTime - startTime}ms`);
+    
+    const statusCode = error.message.includes("không hợp lệ") ? 400 :
+                      error.message.includes("không tồn tại") ? 404 :
+                      error.message.includes("không có quyền") ? 403 : 500;
+    
+    res.status(statusCode).json({ 
+      success: false,
+      error: error.message || "Không thể xóa tin nhắn",
+      timestamp: new Date().toISOString()
+    });
+  }
+};
+
+exports.clearAllMessages = clearAllMessages;

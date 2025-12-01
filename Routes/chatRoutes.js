@@ -27,4 +27,7 @@ router.put("/messages/:messageId/read", authMiddleware, chatController.markMessa
 // 📌 Lấy số lượng tin nhắn chưa đọc trong conversation
 router.get("/conversations/:conversationId/unread-count", authMiddleware, chatController.getUnreadCount);
 
+// 📌 Xóa tất cả tin nhắn trong conversation
+router.delete("/conversations/:conversationId/messages", authMiddleware, chatController.clearAllMessages);
+
 module.exports = router;

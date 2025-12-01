@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Message = require("../models/Message");
 const Conversation = require("../models/Conversation");
+const callHandlers = require("./callSocketHandlers");
 
 // Store online users and their socket connections
 const onlineUsers = new Map();
@@ -31,7 +32,6 @@ const authenticateSocket = async (socket, next) => {
     socket.userId = user._id.toString();
     socket.user = user;
     
-    console.log(`[Socket Auth] User ${user.username} authenticated for socket ${socket.id}`);
     next();
     
   } catch (error) {
@@ -44,8 +44,6 @@ const authenticateSocket = async (socket, next) => {
 const handleConnection = (socket) => {
   const userId = socket.userId;
   const user = socket.user;
-  
-  console.log(`[Socket Connection] User ${user.username} (${userId}) connected with socket ${socket.id}`);
   
   // Add user to online users
   onlineUsers.set(userId, {
@@ -67,8 +65,6 @@ const handleConnection = (socket) => {
     timestamp: new Date().toISOString()
   });
   
-  console.log(`[Online Users] Total online: ${onlineUsers.size}`);
-  
   // Send current online users to the newly connected user
   socket.emit('users:online', {
     onlineUsers: Array.from(onlineUsers.values()),
@@ -82,8 +78,6 @@ const handleDisconnection = (socket) => {
   const user = socket.user;
   
   if (!userId) return;
-  
-  console.log(`[Socket Disconnection] User ${user.username} (${userId}) disconnected socket ${socket.id}`);
   
   // Remove socket from user's socket set
   if (userSockets.has(userId)) {
@@ -111,14 +105,11 @@ const handleDisconnection = (socket) => {
         setTimeout(() => {
           if (!userSockets.has(userId)) {
             onlineUsers.delete(userId);
-            console.log(`[Online Users] User ${user.username} removed from online list`);
           }
         }, 5000); // 5 seconds delay
       }
     }
   }
-  
-  console.log(`[Online Users] Total online: ${onlineUsers.size}`);
 };
 
 // Join conversation room
@@ -127,8 +118,6 @@ const handleJoinConversation = async (socket, data) => {
   const userId = socket.userId;
   
   try {
-    console.log(`[Join Room] User ${userId} joining conversation ${conversationId}`);
-    
     // Validate conversation exists and user is participant
     const conversation = await Conversation.findById(conversationId);
     
@@ -153,7 +142,6 @@ const handleJoinConversation = async (socket, data) => {
     rooms.forEach(room => {
       if (room.startsWith('conversation:')) {
         socket.leave(room);
-        console.log(`[Leave Room] User ${userId} left room ${room}`);
       }
     });
     
@@ -161,7 +149,10 @@ const handleJoinConversation = async (socket, data) => {
     const roomName = `conversation:${conversationId}`;
     socket.join(roomName);
     
-    console.log(`[Join Room] User ${userId} joined room ${roomName}`);
+    // Force join room again after a short delay to ensure membership
+    setTimeout(() => {
+      socket.join(roomName);
+    }, 100);
     
     // Notify other participants
     socket.to(roomName).emit('user:joined_conversation', {
@@ -195,8 +186,6 @@ const handleLeaveConversation = (socket, data) => {
     const roomName = `conversation:${conversationId}`;
     socket.leave(roomName);
     
-    console.log(`[Leave Room] User ${userId} left conversation ${conversationId}`);
-    
     // Notify other participants
     socket.to(roomName).emit('user:left_conversation', {
       userId,
@@ -216,46 +205,52 @@ const handleLeaveConversation = (socket, data) => {
 };
 
 // Handle new message via Socket.IO
-const handleSendMessage = async (socket, data) => {
+const handleSendMessage = async (socket, data, callback) => {
   const { conversationId, content, type = 'text' } = data;
   const userId = socket.userId;
   const startTime = Date.now();
   
   try {
-    console.log(`[Send Message] User ${userId} sending message to conversation ${conversationId}`);
-    
     // Validation
     if (!conversationId || !content || content.trim().length === 0) {
-      socket.emit('message:error', {
+      const error = {
         message: 'Dữ liệu tin nhắn không hợp lệ',
         code: 'INVALID_MESSAGE_DATA'
-      });
+      };
+      if (callback) callback({ error: error.message });
+      socket.emit('message:error', error);
       return;
     }
     
     if (content.trim().length > 1000) {
-      socket.emit('message:error', {
+      const error = {
         message: 'Tin nhắn không được quá 1000 ký tự',
         code: 'MESSAGE_TOO_LONG'
-      });
+      };
+      if (callback) callback({ error: error.message });
+      socket.emit('message:error', error);
       return;
     }
     
     // Check conversation and permissions
     const conversation = await Conversation.findById(conversationId);
     if (!conversation) {
-      socket.emit('message:error', {
+      const error = {
         message: 'Cuộc trò chuyện không tồn tại',
         code: 'CONVERSATION_NOT_FOUND'
-      });
+      };
+      if (callback) callback({ error: error.message });
+      socket.emit('message:error', error);
       return;
     }
     
     if (!conversation.participants.includes(userId)) {
-      socket.emit('message:error', {
+      const error = {
         message: 'Bạn không có quyền gửi tin nhắn',
         code: 'ACCESS_DENIED'
-      });
+      };
+      if (callback) callback({ error: error.message });
+      socket.emit('message:error', error);
       return;
     }
     
@@ -275,7 +270,6 @@ const handleSendMessage = async (socket, data) => {
     await conversation.updateLastActivity();
     
     const endTime = Date.now();
-    console.log(`[Send Message] Message ${message._id} created in ${endTime - startTime}ms`);
     
     // Emit to all participants in the room
     const roomName = `conversation:${conversationId}`;
@@ -284,16 +278,45 @@ const handleSendMessage = async (socket, data) => {
       timestamp: new Date().toISOString()
     };
     
-    // Send to room (including sender)
-    socket.to(roomName).emit('message:new', messageData);
-    socket.emit('message:sent', messageData);
+    // Send success callback response
+    if (callback) {
+      callback({ 
+        success: true, 
+        messageId: message._id.toString(),
+        message: messageData
+      });
+    }
     
-    console.log(`[Broadcast] Message broadcasted to room ${roomName}`);
+    // Send to room (including all participants)
+    const roomClients = Array.from(socket.adapter.rooms.get(roomName) || []);
+    
+    // Try broadcasting to room first
+    if (roomClients.length > 0) {
+      // Use socket.to() to exclude sender from room broadcast
+      socket.to(roomName).emit('message:new', messageData);
+    } else {
+      // Fallback: broadcast to individual users if room is empty
+      conversation.participants.forEach(participantId => {
+        // Skip sender to avoid duplicate
+        if (participantId.toString() === userId.toString()) return;
+        
+        const participantSockets = userSockets.get(participantId.toString());
+        if (participantSockets) {
+          participantSockets.forEach(socketId => {
+            socket.nsp.to(socketId).emit('message:new', messageData);
+          });
+        }
+      });
+    }
     
   } catch (error) {
     const endTime = Date.now();
     console.error(`[Send Message] Error for user ${userId}: ${error.message}`);
-    console.error(`[Send Message] Failed after ${endTime - startTime}ms`);
+    
+    // Send error callback response
+    if (callback) {
+      callback({ error: error.message });
+    }
     
     socket.emit('message:error', {
       message: 'Không thể gửi tin nhắn',
@@ -318,7 +341,6 @@ const handleTyping = (socket, data) => {
         conversationId,
         timestamp: new Date().toISOString()
       });
-      console.log(`[Typing] User ${userId} started typing in ${conversationId}`);
     } else {
       socket.to(roomName).emit('user:stop_typing', {
         userId,
@@ -326,7 +348,6 @@ const handleTyping = (socket, data) => {
         conversationId,
         timestamp: new Date().toISOString()
       });
-      console.log(`[Typing] User ${userId} stopped typing in ${conversationId}`);
     }
     
   } catch (error) {
@@ -340,8 +361,6 @@ const handleMarkAsRead = async (socket, data) => {
   const userId = socket.userId;
   
   try {
-    console.log(`[Mark Read] User ${userId} marking message ${messageId} as read`);
-    
     const message = await Message.findById(messageId).populate('conversation');
     if (!message) {
       socket.emit('error', {
@@ -375,8 +394,6 @@ const handleMarkAsRead = async (socket, data) => {
       timestamp: new Date().toISOString()
     });
     
-    console.log(`[Mark Read] Message ${messageId} marked as read by user ${userId}`);
-    
   } catch (error) {
     console.error(`[Mark Read] Error for user ${userId}:`, error);
   }
@@ -395,23 +412,32 @@ module.exports = (io) => {
   // Apply authentication middleware
   io.use(authenticateSocket);
   
+  // Share userSockets reference with call handlers
+  callHandlers.setUserSocketsRef(userSockets);
+  
   io.on('connection', (socket) => {
     handleConnection(socket);
     
     // Chat Events
     socket.on('conversation:join', (data) => handleJoinConversation(socket, data));
     socket.on('conversation:leave', (data) => handleLeaveConversation(socket, data));
-    socket.on('message:send', (data) => handleSendMessage(socket, data));
+    socket.on('message:send', (data, callback) => handleSendMessage(socket, data, callback));
     socket.on('message:read', (data) => handleMarkAsRead(socket, data));
     socket.on('typing:start', (data) => handleTyping(socket, { ...data, isTyping: true }));
     socket.on('typing:stop', (data) => handleTyping(socket, { ...data, isTyping: false }));
     socket.on('users:get_online', () => handleGetOnlineUsers(socket));
     
-    // Disconnection
-    socket.on('disconnect', () => handleDisconnection(socket));
+    // Call Events
+    socket.on('call:offer', (data) => callHandlers.handleCallOffer(socket, data));
+    socket.on('call:answer', (data) => callHandlers.handleCallAnswer(socket, data));
+    socket.on('call:ice-candidate', (data) => callHandlers.handleIceCandidate(socket, data));
+    socket.on('call:decline', (data) => callHandlers.handleCallDecline(socket, data));
+    socket.on('call:end', (data) => callHandlers.handleCallEnd(socket, data));
     
-    console.log(`[Socket Setup] All event handlers registered for user ${socket.userId}`);
+    // Disconnection
+    socket.on('disconnect', () => {
+      handleDisconnection(socket);
+      callHandlers.handleUserDisconnect(socket);
+    });
   });
-  
-  console.log(`[Socket.IO] Chat socket handlers initialized`);
 };

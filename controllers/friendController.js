@@ -53,6 +53,25 @@ const sendFriendRequest = async (req, res) => {
         return res.status(400).json({ error: 'Friend request already sent or received' });
       } else if (status === 'blocked') {
         return res.status(400).json({ error: 'Cannot send friend request to this user' });
+      } else if (status === 'rejected') {
+        // Allow new request after rejection - update existing record
+        console.log('🔄 Updating rejected relationship to pending');
+        existingRelation.status = 'pending';
+        existingRelation.sender = senderId;
+        existingRelation.receiver = receiverId;
+        existingRelation.createdAt = new Date();
+        
+        await existingRelation.save();
+        
+        return res.status(201).json({
+          success: true,
+          message: 'Friend request sent successfully',
+          data: {
+            receiverId,
+            receiverName: receiver.username,
+            status: 'pending'
+          }
+        });
       }
     }
 
@@ -64,7 +83,6 @@ const sendFriendRequest = async (req, res) => {
     });
 
     await friendRequest.save();
-    console.log(`✅ Friend request sent successfully: ${friendRequest._id}`);
 
     res.status(201).json({
       success: true,
@@ -99,7 +117,7 @@ const acceptFriendRequest = async (req, res) => {
     const { requestId } = req.params;
     const userId = req.user.id;
 
-    await session.withTransaction(async () => {
+    const result = await session.withTransaction(async () => {
       // Find the friend request
       const friendRequest = await Friend.findById(requestId).session(session);
       
@@ -124,9 +142,8 @@ const acceptFriendRequest = async (req, res) => {
       await friendRequest.save({ session });
 
       console.log(`✅ Friend request accepted: ${requestId}`);
+      return friendRequest;
     });
-
-    await session.commitTransaction();
 
     // Get sender info for response
     const friendRequest = await Friend.findById(requestId).populate('sender', 'username profilePicture');
@@ -146,7 +163,6 @@ const acceptFriendRequest = async (req, res) => {
     });
 
   } catch (error) {
-    await session.abortTransaction();
     console.error('❌ Accept friend request error:', error.message);
     res.status(400).json({
       success: false,
@@ -171,7 +187,7 @@ const rejectFriendRequest = async (req, res) => {
     const { requestId } = req.params;
     const userId = req.user.id;
 
-    await session.withTransaction(async () => {
+    const result = await session.withTransaction(async () => {
       // Find the friend request
       const friendRequest = await Friend.findById(requestId).session(session);
       
@@ -194,9 +210,8 @@ const rejectFriendRequest = async (req, res) => {
       await friendRequest.save({ session });
 
       console.log(`❌ Friend request rejected: ${requestId}`);
+      return friendRequest;
     });
-
-    await session.commitTransaction();
 
     res.status(200).json({
       success: true,
@@ -208,7 +223,6 @@ const rejectFriendRequest = async (req, res) => {
     });
 
   } catch (error) {
-    await session.abortTransaction();
     console.error('❌ Reject friend request error:', error.message);
     res.status(400).json({
       success: false,
@@ -243,7 +257,7 @@ const blockUser = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    await session.withTransaction(async () => {
+    const result = await session.withTransaction(async () => {
       // Remove any existing relationship
       await Friend.findOneAndDelete({
         $or: [
@@ -261,9 +275,8 @@ const blockUser = async (req, res) => {
 
       await blockRelation.save({ session });
       console.log(`🚫 User blocked successfully: ${userId}`);
+      return blockRelation;
     });
-
-    await session.commitTransaction();
 
     res.status(200).json({
       success: true,
@@ -276,7 +289,6 @@ const blockUser = async (req, res) => {
     });
 
   } catch (error) {
-    await session.abortTransaction();
     console.error('❌ Block user error:', error.message);
     res.status(500).json({
       success: false,
@@ -301,8 +313,27 @@ const removeFriend = async (req, res) => {
     const { friendId } = req.params;
     const userId = req.user.id;
 
-    await session.withTransaction(async () => {
-      // Find and remove the friendship
+    const result = await session.withTransaction(async () => {
+      // First, let's find any relationship between these users to debug
+      const anyRelationship = await Friend.findOne({
+        $or: [
+          { sender: userId, receiver: friendId },
+          { sender: friendId, receiver: userId }
+        ]
+      }).session(session);
+
+      console.log('🔍 Found relationship:', anyRelationship);
+
+      if (!anyRelationship) {
+        throw new Error('No relationship found between these users');
+      }
+
+      // Check if it's an accepted friendship
+      if (anyRelationship.status !== 'accepted') {
+        throw new Error(`Cannot remove friendship with status: ${anyRelationship.status}`);
+      }
+
+      // Remove the friendship
       const friendship = await Friend.findOneAndDelete({
         $or: [
           { sender: userId, receiver: friendId, status: 'accepted' },
@@ -315,9 +346,8 @@ const removeFriend = async (req, res) => {
       }
 
       console.log(`💔 Friendship removed successfully: ${friendship._id}`);
+      return friendship;
     });
-
-    await session.commitTransaction();
 
     res.status(200).json({
       success: true,
@@ -328,7 +358,6 @@ const removeFriend = async (req, res) => {
     });
 
   } catch (error) {
-    await session.abortTransaction();
     console.error('❌ Remove friend error:', error.message);
     res.status(400).json({
       success: false,
@@ -352,28 +381,65 @@ const getFriends = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const search = req.query.search || '';
+    const offset = (page - 1) * limit;
 
-    // Build search filter
-    let userFilter = {};
-    if (search) {
-      userFilter = {
-        $or: [
-          { username: { $regex: search, $options: 'i' } },
-          { fullName: { $regex: search, $options: 'i' } }
-        ]
+    // Get friendships where user is sender or receiver and status is accepted
+    const friendships = await Friend.find({
+      $or: [
+        { sender: userId, status: 'accepted' },
+        { receiver: userId, status: 'accepted' }
+      ]
+    })
+    .populate('sender', 'username name fullName avatar email')
+    .populate('receiver', 'username name fullName avatar email')
+    .sort({ acceptedAt: -1 })
+    .skip(offset)
+    .limit(limit)
+    .lean();
+
+    console.log(`📋 Found ${friendships.length} friendships for user ${userId}`);
+
+    // Transform friendships to friend users (get the other user in each friendship)
+    const friends = friendships.map(friendship => {
+      const friend = friendship.sender._id.toString() === userId.toString() 
+        ? friendship.receiver 
+        : friendship.sender;
+      
+      // Add friendship metadata and ensure name field exists
+      return {
+        ...friend,
+        name: friend.name || friend.fullName || friend.username, // Fallback cho name
+        friendshipId: friendship._id,
+        acceptedAt: friendship.acceptedAt,
+        friendedAt: friendship.acceptedAt
       };
+    });
+
+    // Apply search filter if provided
+    let filteredFriends = friends;
+    if (search) {
+      const searchRegex = new RegExp(search, 'i');
+      filteredFriends = friends.filter(friend => 
+        searchRegex.test(friend.username) || 
+        searchRegex.test(friend.fullName)
+      );
     }
 
-    // Get friends with pagination
-    const friends = await Friend.getFriends(userId, page, limit, userFilter);
-    const totalFriends = await Friend.getFriendCount(userId);
+    // Get total count for pagination
+    const totalFriends = await Friend.countDocuments({
+      $or: [
+        { sender: userId, status: 'accepted' },
+        { receiver: userId, status: 'accepted' }
+      ]
+    });
 
-    console.log(`👥 Retrieved ${friends.length} friends (page ${page})`);
+    console.log(`👥 Retrieved ${filteredFriends.length} friends (page ${page}) out of ${totalFriends} total`);
+    console.log('📋 Sample friend data:', filteredFriends[0]);
 
     res.status(200).json({
       success: true,
       data: {
-        friends,
+        friends: filteredFriends,
         pagination: {
           page,
           limit,

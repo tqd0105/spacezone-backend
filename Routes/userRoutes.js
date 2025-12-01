@@ -89,15 +89,15 @@ router.get("/search/:query", verifyToken, async (req, res) => {
       });
     }
 
-    // Search users by username or fullName
+    // Search users by username or name
     const searchRegex = new RegExp(query.trim(), 'i');
     const users = await User.find({
       _id: { $ne: currentUserId }, // Exclude current user
       $or: [
         { username: searchRegex },
-        { fullName: searchRegex }
+        { name: searchRegex }
       ]
-    }).select('username fullName avatar').limit(20);
+    }).select('username name avatar').limit(20);
 
     console.log(`✅ Found ${users.length} users matching "${query}"`);
 
